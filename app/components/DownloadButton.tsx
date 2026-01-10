@@ -17,11 +17,16 @@ export default function DownloadButton({
     const url = URL.createObjectURL(file);
     const link = document.createElement('a');
     link.href = url;
-    link.download = filename.endsWith('.png') ? filename : `${filename}.png`;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const getButtonText = (): string => {
+    const extension = filename.split('.').pop()?.toUpperCase() || '';
+    return `Download ${extension}`;
   };
 
   return (
@@ -52,7 +57,7 @@ export default function DownloadButton({
           d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
         />
       </svg>
-      <span>Download PNG</span>
+      <span>{getButtonText()}</span>
     </button>
   );
 }

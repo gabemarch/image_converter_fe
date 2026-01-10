@@ -13,6 +13,15 @@ export default function ConversionStatus({ state }: ConversionStatusProps) {
     return null;
   }
 
+  const getConversionMessage = (): string => {
+    if (status === 'uploading') return 'Uploading file...';
+    
+    const inputFormat = state.inputFormat?.toUpperCase() || 'file';
+    const outputFormat = state.outputFormat?.toUpperCase() || 'target format';
+    
+    return `Converting ${inputFormat} to ${outputFormat}...`;
+  };
+
   if (status === 'uploading' || status === 'processing') {
     return (
       <div className="w-full p-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
@@ -22,10 +31,10 @@ export default function ConversionStatus({ state }: ConversionStatusProps) {
           </div>
           <div className="flex-1">
             <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
-              {status === 'uploading' ? 'Uploading file...' : 'Converting AVIF to PNG...'}
+              {getConversionMessage()}
             </p>
             <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-              Please wait while we process your image
+              Please wait while we process your file
             </p>
           </div>
         </div>
@@ -57,7 +66,7 @@ export default function ConversionStatus({ state }: ConversionStatusProps) {
               Conversion successful!
             </p>
             <p className="text-xs text-green-700 dark:text-green-300 mt-1">
-              Your PNG file is ready to download
+              Your {state.outputFormat?.toUpperCase() || 'converted'} file is ready to download
             </p>
           </div>
         </div>

@@ -4,10 +4,13 @@ import { useState, useCallback } from 'react';
 import FileUpload from './components/FileUpload';
 import ConversionStatus from './components/ConversionStatus';
 import DownloadButton from './components/DownloadButton';
-import { ConversionState } from './types/converter';
-import { convertAvifToPng } from './lib/api';
+import { ConversionState, InputFormat, OutputFormat } from './types/converter';
+import { convertFile, detectInputFormat, getDefaultOutputFormat } from './lib/api';
+
+type TabType = 'image' | 'ebook';
 
 export default function Home() {
+  const [activeTab, setActiveTab] = useState<TabType>('image');
   const [conversionState, setConversionState] = useState<ConversionState>({
     status: 'idle',
     file: null,
@@ -17,20 +20,52 @@ export default function Home() {
   });
 
   const handleFileSelect = useCallback(async (file: File) => {
+    const inputFormat = detectInputFormat(file) as InputFormat | null;
+    if (!inputFormat) {
+      setConversionState({
+        status: 'error',
+        file,
+        convertedFile: null,
+        error: 'Unsupported file type',
+        progress: 0,
+      });
+      return;
+    }
+
+    // Validate that the file matches the active tab
+    const imageFormats: InputFormat[] = ['cr2', 'avif', 'webp'];
+    const ebookFormats: InputFormat[] = ['epub', 'mobi', 'pdf'];
+    
+    const isImageFormat = imageFormats.includes(inputFormat);
+    const isEbookFormat = ebookFormats.includes(inputFormat);
+    
+    if ((activeTab === 'image' && !isImageFormat) || (activeTab === 'ebook' && !isEbookFormat)) {
+      setConversionState({
+        status: 'error',
+        file,
+        convertedFile: null,
+        error: `Please select a ${activeTab === 'image' ? 'image' : 'ebook'} file for this tab`,
+        progress: 0,
+      });
+      return;
+    }
+
+    const outputFormat = getDefaultOutputFormat(inputFormat) as OutputFormat;
+
     setConversionState({
       status: 'uploading',
       file,
       convertedFile: null,
       error: null,
       progress: 0,
+      inputFormat,
+      outputFormat,
     });
 
     try {
       setConversionState(prev => ({ ...prev, status: 'processing' }));
       
-      const convertedBlob = await convertAvifToPng(file);
-
-      const originalName = file.name.replace(/\.(avif|avifs)$/i, '');
+      const convertedBlob = await convertFile(file, outputFormat);
       
       setConversionState({
         status: 'success',
@@ -38,6 +73,8 @@ export default function Home() {
         convertedFile: convertedBlob,
         error: null,
         progress: 100,
+        inputFormat,
+        outputFormat,
       });
     } catch (error) {
       const errorMessage = error instanceof Error 
@@ -50,9 +87,11 @@ export default function Home() {
         convertedFile: null,
         error: errorMessage,
         progress: 0,
+        inputFormat,
+        outputFormat,
       });
     }
-  }, []);
+  }, [activeTab]);
 
   const handleReset = useCallback(() => {
     setConversionState({
@@ -64,11 +103,26 @@ export default function Home() {
     });
   }, []);
 
+  const handleTabChange = useCallback((tab: TabType) => {
+    setActiveTab(tab);
+    // Reset conversion state when switching tabs
+    setConversionState({
+      status: 'idle',
+      file: null,
+      convertedFile: null,
+      error: null,
+      progress: 0,
+    });
+  }, []);
+
   const getDownloadFilename = (): string => {
-    if (!conversionState.file) return 'converted.png';
-    const originalName = conversionState.file.name.replace(/\.(avif|avifs)$/i, '');
-    return `${originalName}.png`;
+    if (!conversionState.file || !conversionState.outputFormat) {
+      return 'converted';
+    }
+    const originalName = conversionState.file.name.replace(/\.[^.]+$/, '');
+    return `${originalName}.${conversionState.outputFormat}`;
   };
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
@@ -76,20 +130,55 @@ export default function Home() {
         <div className="max-w-2xl mx-auto">
           <div className="text-center mb-8 sm:mb-12">
             <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 dark:text-white mb-4">
-              AVIF to PNG Converter
+              {activeTab === 'image' ? 'Image Converter' : 'Ebook Converter'}
             </h1>
             <p className="text-lg text-gray-600 dark:text-gray-300">
-              Convert your AVIF images to PNG format quickly and easily
+              {activeTab === 'image' 
+                ? 'Convert your images between various formats'
+                : 'Convert your ebooks to AZW3 format'
+              }
             </p>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 sm:p-8">
-            <div className="mb-6">
-              <FileUpload
-                onFileSelect={handleFileSelect}
-                disabled={conversionState.status === 'uploading' || conversionState.status === 'processing'}
-              />
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl overflow-hidden">
+            {/* Tabs */}
+            <div className="border-b border-gray-200 dark:border-gray-700">
+              <div className="flex">
+                <button
+                  onClick={() => handleTabChange('image')}
+                  className={`
+                    flex-1 px-6 py-4 text-sm font-medium transition-colors
+                    ${activeTab === 'image'
+                      ? 'border-b-2 border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                    }
+                  `}
+                >
+                  Image
+                </button>
+                <button
+                  onClick={() => handleTabChange('ebook')}
+                  className={`
+                    flex-1 px-6 py-4 text-sm font-medium transition-colors
+                    ${activeTab === 'ebook'
+                      ? 'border-b-2 border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                    }
+                  `}
+                >
+                  Ebook
+                </button>
+              </div>
             </div>
+
+            <div className="p-6 sm:p-8">
+              <div className="mb-6">
+                <FileUpload
+                  onFileSelect={handleFileSelect}
+                  disabled={conversionState.status === 'uploading' || conversionState.status === 'processing'}
+                  category={activeTab}
+                />
+              </div>
 
             {conversionState.status !== 'idle' && (
               <div className="mb-6">
@@ -122,6 +211,7 @@ export default function Home() {
                 </button>
               </div>
             )}
+            </div>
           </div>
 
           <div className="mt-8 text-center">
@@ -134,7 +224,7 @@ export default function Home() {
                   <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-2">
                     <span className="text-blue-600 dark:text-blue-400 font-bold">1</span>
                   </div>
-                  <p className="font-medium">Upload AVIF</p>
+                  <p className="font-medium">Upload File</p>
                   <p className="text-xs mt-1">Drag & drop or click to browse</p>
                 </div>
                 <div className="flex flex-col items-center">
@@ -142,21 +232,42 @@ export default function Home() {
                     <span className="text-blue-600 dark:text-blue-400 font-bold">2</span>
                   </div>
                   <p className="font-medium">Convert</p>
-                  <p className="text-xs mt-1">Automatic conversion to PNG</p>
+                  <p className="text-xs mt-1">Automatic format conversion</p>
                 </div>
                 <div className="flex flex-col items-center">
                   <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-2">
                     <span className="text-blue-600 dark:text-blue-400 font-bold">3</span>
                   </div>
                   <p className="font-medium">Download</p>
-                  <p className="text-xs mt-1">Get your PNG file</p>
+                  <p className="text-xs mt-1">Get your converted file</p>
+                </div>
+              </div>
+              
+              <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
+                  Supported Conversions
+                </h3>
+                <div className="text-xs text-gray-600 dark:text-gray-400">
+                  {activeTab === 'image' ? (
+                    <ul className="list-disc list-inside space-y-1 ml-2">
+                      <li>CR2 → JPG, PNG</li>
+                      <li>AVIF → JPG, PNG</li>
+                      <li>WebP → JPG, PNG</li>
+                    </ul>
+                  ) : (
+                    <ul className="list-disc list-inside space-y-1 ml-2">
+                      <li>EPUB → AZW3</li>
+                      <li>MOBI → AZW3</li>
+                      <li>PDF → AZW3</li>
+                    </ul>
+                  )}
                 </div>
               </div>
             </div>
           </div>
 
           <div className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            <p>Free AVIF to PNG conversion • No file storage • Privacy guaranteed</p>
+            <p>Free file conversion • No file storage • Privacy guaranteed</p>
           </div>
         </div>
       </div>

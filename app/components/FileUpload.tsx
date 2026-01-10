@@ -7,27 +7,45 @@ interface FileUploadProps {
   onFileSelect: (file: File) => void;
   disabled?: boolean;
   maxSizeMB?: number;
+  category?: 'image' | 'ebook';
 }
 
 export default function FileUpload({ 
   onFileSelect, 
   disabled = false,
-  maxSizeMB = 10 
+  maxSizeMB = 10,
+  category = 'image'
 }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [fileInfo, setFileInfo] = useState<FileInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const validateFile = useCallback((file: File): string | null => {
-    // Check file type
-    const isAvif = file.type.includes('avif') || 
-                   file.name.toLowerCase().endsWith('.avif') ||
-                   file.name.toLowerCase().endsWith('.avifs');
-
-  console.log('isAvif', isAvif);
+    // Check file type based on category
+    const extension = file.name.toLowerCase().split('.').pop() || '';
     
-    if (!isAvif) {
-      return 'Please upload an AVIF file (.avif or .avifs)';
+    const imageExtensions = ['cr2', 'avif', 'avifs', 'webp'];
+    const ebookExtensions = ['epub', 'mobi', 'azw', 'pdf'];
+    
+    const supportedExtensions = category === 'image' ? imageExtensions : ebookExtensions;
+    
+    const isValidExtension = supportedExtensions.includes(extension) ||
+      (category === 'image' && (
+        file.type.includes('avif') ||
+        file.type.includes('webp') ||
+        file.type.includes('cr2')
+      )) ||
+      (category === 'ebook' && (
+        file.type.includes('epub') ||
+        file.type.includes('mobi') ||
+        file.type.includes('pdf')
+      ));
+    
+    if (!isValidExtension) {
+      const formatList = category === 'image' 
+        ? 'CR2, AVIF, WebP' 
+        : 'EPUB, MOBI, PDF';
+      return `Unsupported file type. Supported ${category} formats: ${formatList}`;
     }
 
     // Check file size (10MB default)
@@ -41,7 +59,7 @@ export default function FileUpload({
     }
 
     return null;
-  }, [maxSizeMB]);
+  }, [maxSizeMB, category]);
 
   const handleFile = useCallback((file: File) => {
     setError(null);
@@ -119,7 +137,10 @@ export default function FileUpload({
         <input
           type="file"
           id="file-upload"
-          accept=".avif,.avifs,image/avif"
+          accept={category === 'image' 
+            ? '.cr2,.avif,.avifs,.webp,image/avif,image/webp'
+            : '.epub,.mobi,.azw,.pdf,application/epub+zip,application/x-mobipocket-ebook,application/pdf'
+          }
           onChange={handleFileInput}
           disabled={disabled}
           className="hidden"
@@ -148,10 +169,16 @@ export default function FileUpload({
             </svg>
             <div className="text-center">
               <p className="text-lg font-medium text-gray-700 dark:text-gray-300">
-                {isDragging ? 'Drop your file here' : 'Drag & drop your AVIF file'}
+                {isDragging ? 'Drop your file here' : 'Drag & drop your file'}
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 or click to browse
+              </p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+                {category === 'image' 
+                  ? 'Supports: CR2, AVIF, WebP'
+                  : 'Supports: EPUB, MOBI, PDF'
+                }
               </p>
             </div>
           </div>
