@@ -16,6 +16,7 @@ export default function FileUpload({
   maxSizeMB = 10,
   category = 'image'
 }: FileUploadProps) {
+  const maxSizeMbForCr2 = 30;
   const [isDragging, setIsDragging] = useState(false);
   const [fileInfo, setFileInfo] = useState<FileInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +25,7 @@ export default function FileUpload({
     // Check file type based on category
     const extension = file.name.toLowerCase().split('.').pop() || '';
     
-    const imageExtensions = ['cr2', 'avif', 'avifs', 'webp'];
+    const imageExtensions = ['cr2', 'avif', 'avifs', 'webp', 'heic', 'heif'];
     const ebookExtensions = ['epub', 'mobi', 'azw', 'pdf'];
     
     const supportedExtensions = category === 'image' ? imageExtensions : ebookExtensions;
@@ -33,7 +34,9 @@ export default function FileUpload({
       (category === 'image' && (
         file.type.includes('avif') ||
         file.type.includes('webp') ||
-        file.type.includes('cr2')
+        file.type.includes('cr2') ||
+        file.type.includes('heic') ||
+        file.type.includes('heif')
       )) ||
       (category === 'ebook' && (
         file.type.includes('epub') ||
@@ -43,15 +46,16 @@ export default function FileUpload({
     
     if (!isValidExtension) {
       const formatList = category === 'image' 
-        ? 'CR2, AVIF, WebP' 
+        ? 'CR2, AVIF, WebP, HEIC' 
         : 'EPUB, MOBI, PDF';
       return `Unsupported file type. Supported ${category} formats: ${formatList}`;
     }
 
-    // Check file size (10MB default)
-    const maxSize = maxSizeMB * 1024 * 1024;
+    // Check file size (CR2 up to 30MB, otherwise use maxSizeMB)
+    const maxAllowedMb = category === 'image' && extension === 'cr2' ? maxSizeMbForCr2 : maxSizeMB;
+    const maxSize = maxAllowedMb * 1024 * 1024;
     if (file.size > maxSize) {
-      return `File size exceeds maximum limit of ${maxSizeMB}MB`;
+      return `File size exceeds maximum limit of ${maxAllowedMb}MB`;
     }
 
     if (file.size === 0) {
@@ -59,7 +63,7 @@ export default function FileUpload({
     }
 
     return null;
-  }, [maxSizeMB, category]);
+  }, [maxSizeMB, category, maxSizeMbForCr2]);
 
   const handleFile = useCallback((file: File) => {
     setError(null);
@@ -138,7 +142,7 @@ export default function FileUpload({
           type="file"
           id="file-upload"
           accept={category === 'image' 
-            ? '.cr2,.avif,.avifs,.webp,image/avif,image/webp'
+            ? '.cr2,.avif,.avifs,.webp,.heic,.heif,image/avif,image/webp,image/heic,image/heif'
             : '.epub,.mobi,.azw,.pdf,application/epub+zip,application/x-mobipocket-ebook,application/pdf'
           }
           onChange={handleFileInput}
@@ -176,7 +180,7 @@ export default function FileUpload({
               </p>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
                 {category === 'image' 
-                  ? 'Supports: CR2, AVIF, WebP'
+                  ? 'Supports: CR2, AVIF, WebP, HEIC, HEIF'
                   : 'Supports: EPUB, MOBI, PDF'
                 }
               </p>
@@ -220,7 +224,10 @@ export default function FileUpload({
       )}
 
       <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 text-center">
-        Maximum file size: {maxSizeMB}MB
+        {category === 'image'
+          ? `Maximum file size: ${maxSizeMbForCr2}MB for CR2, ${maxSizeMB}MB for other images`
+          : `Maximum file size: ${maxSizeMB}MB`
+        }
       </p>
     </div>
   );

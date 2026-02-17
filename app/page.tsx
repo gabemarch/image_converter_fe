@@ -33,7 +33,7 @@ export default function Home() {
     }
 
     // Validate that the file matches the active tab
-    const imageFormats: InputFormat[] = ['cr2', 'avif', 'webp'];
+    const imageFormats: InputFormat[] = ['cr2', 'avif', 'webp', 'heic', 'heif'];
     const ebookFormats: InputFormat[] = ['epub', 'mobi', 'pdf'];
     
     const isImageFormat = imageFormats.includes(inputFormat);
@@ -141,7 +141,6 @@ export default function Home() {
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl overflow-hidden">
-            {/* Tabs */}
             <div className="border-b border-gray-200 dark:border-gray-700">
               <div className="flex">
                 <button
@@ -156,7 +155,7 @@ export default function Home() {
                 >
                   Image
                 </button>
-                <button
+                {/* <button
                   onClick={() => handleTabChange('ebook')}
                   className={`
                     flex-1 px-6 py-4 text-sm font-medium transition-colors
@@ -167,7 +166,7 @@ export default function Home() {
                   `}
                 >
                   Ebook
-                </button>
+                </button> */}
               </div>
             </div>
 
@@ -253,6 +252,7 @@ export default function Home() {
                       <li>CR2 → JPG, PNG</li>
                       <li>AVIF → JPG, PNG</li>
                       <li>WebP → JPG, PNG</li>
+                      <li>HEIC/HEIF → JPG, PNG</li>
                     </ul>
                   ) : (
                     <ul className="list-disc list-inside space-y-1 ml-2">

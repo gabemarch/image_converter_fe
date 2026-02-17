@@ -2,6 +2,7 @@ import { OutputFormat } from '../types/converter';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://image-converter-be-stqy.vercel.app';
 const MAX_FILE_SIZE = parseInt(process.env.NEXT_PUBLIC_MAX_FILE_SIZE || '10485760', 10);
+const MAX_FILE_SIZE_CR2 = 30 * 1024 * 1024; // 30MB for CR2 files
 
 export function detectInputFormat(file: File): string | null {
   const extension = file.name.toLowerCase().split('.').pop() || '';
@@ -15,6 +16,8 @@ export function detectInputFormat(file: File): string | null {
     'mobi': 'mobi',
     'azw': 'mobi',
     'pdf': 'pdf',
+    'heic': 'heic',
+    'heif': 'heif',
   };
   
   return formatMap[extension] || null;
@@ -28,19 +31,22 @@ export function getDefaultOutputFormat(inputFormat: string): OutputFormat {
     'epub': 'azw3',
     'mobi': 'azw3',
     'pdf': 'azw3',
+    'heic': 'jpg',
+    'heif': 'jpg',
   };
   
   return defaults[inputFormat] || 'png';
 }
 
 export async function convertFile(file: File, outputFormat?: OutputFormat): Promise<Blob> {
-  if (file.size > MAX_FILE_SIZE) {
-    throw new Error(`File size exceeds maximum limit of ${MAX_FILE_SIZE / 1024 / 1024}MB`);
-  }
-
   const inputFormat = detectInputFormat(file);
   if (!inputFormat) {
-    throw new Error('Unsupported file type. Supported formats: CR2, AVIF, WebP, EPUB, MOBI, PDF');
+    throw new Error('Unsupported file type. Supported formats: CR2, AVIF, WebP, EPUB, MOBI, PDF, HEIC, HEIF');
+  }
+
+  const maxSizeForFile = inputFormat === 'cr2' ? MAX_FILE_SIZE_CR2 : MAX_FILE_SIZE;
+  if (file.size > maxSizeForFile) {
+    throw new Error(`File size exceeds maximum limit of ${Math.round(maxSizeForFile / 1024 / 1024)}MB`);
   }
 
   const targetOutputFormat = outputFormat || getDefaultOutputFormat(inputFormat);

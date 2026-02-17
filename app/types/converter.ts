@@ -1,4 +1,4 @@
-export type InputFormat = 'cr2' | 'avif' | 'webp' | 'epub' | 'mobi' | 'pdf';
+export type InputFormat = 'cr2' | 'avif' | 'webp' | 'heic' | 'heif' | 'epub' | 'mobi' | 'pdf';
 export type OutputFormat = 'jpg' | 'png' | 'azw3';
 
 export interface ConversionState {
