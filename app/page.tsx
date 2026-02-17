@@ -5,7 +5,7 @@ import FileUpload from './components/FileUpload';
 import ConversionStatus from './components/ConversionStatus';
 import DownloadButton from './components/DownloadButton';
 import { ConversionState, InputFormat, OutputFormat } from './types/converter';
-import { convertFile, detectInputFormat, getDefaultOutputFormat } from './lib/api';
+import { convertFile, uploadToBlob, convertFromUrl, detectInputFormat, getDefaultOutputFormat } from './lib/api';
 
 type TabType = 'image' | 'ebook';
 
@@ -63,19 +63,35 @@ export default function Home() {
     });
 
     try {
-      setConversionState(prev => ({ ...prev, status: 'processing' }));
-      
-      const convertedBlob = await convertFile(file, outputFormat);
-      
-      setConversionState({
-        status: 'success',
-        file,
-        convertedFile: convertedBlob,
-        error: null,
-        progress: 100,
-        inputFormat,
-        outputFormat,
-      });
+      // For large files (>4MB), upload to Vercel Blob first so we avoid 413; then convert-from-url
+      const useBlobFlow = file.size > 4 * 1024 * 1024;
+      if (useBlobFlow) {
+        setConversionState(prev => ({ ...prev, status: 'uploading' }));
+        const { url } = await uploadToBlob(file);
+        setConversionState(prev => ({ ...prev, status: 'processing' }));
+        const convertedBlob = await convertFromUrl(url, file.name, outputFormat);
+        setConversionState({
+          status: 'success',
+          file,
+          convertedFile: convertedBlob,
+          error: null,
+          progress: 100,
+          inputFormat,
+          outputFormat,
+        });
+      } else {
+        setConversionState(prev => ({ ...prev, status: 'processing' }));
+        const convertedBlob = await convertFile(file, outputFormat);
+        setConversionState({
+          status: 'success',
+          file,
+          convertedFile: convertedBlob,
+          error: null,
+          progress: 100,
+          inputFormat,
+          outputFormat,
+        });
+      }
     } catch (error) {
       const errorMessage = error instanceof Error 
         ? error.message 

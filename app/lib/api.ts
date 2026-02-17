@@ -1,8 +1,11 @@
+import { upload } from '@vercel/blob/client';
 import { OutputFormat } from '../types/converter';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://image-converter-be-stqy.vercel.app';
 const MAX_FILE_SIZE = parseInt(process.env.NEXT_PUBLIC_MAX_FILE_SIZE || '10485760', 10);
 const MAX_FILE_SIZE_CR2 = 30 * 1024 * 1024; // 30MB for CR2 files
+/** Vercel serverless body limit; use Blob + convert-from-url above this. */
+const BLOB_THRESHOLD_BYTES = 4 * 1024 * 1024; // 4MB
 
 export function detectInputFormat(file: File): string | null {
   const extension = file.name.toLowerCase().split('.').pop() || '';
@@ -38,6 +41,45 @@ export function getDefaultOutputFormat(inputFormat: string): OutputFormat {
   return defaults[inputFormat] || 'png';
 }
 
+/**
+ * Upload file to Vercel Blob (client → Blob directly, bypasses 4.5MB serverless limit).
+ * @see https://vercel.com/docs/vercel-blob/client-upload
+ */
+export async function uploadToBlob(file: File): Promise<{ url: string }> {
+  const blob = await upload(file.name, file, {
+    access: 'public',
+    handleUploadUrl: '/api/upload',
+  });
+  return { url: blob.url };
+}
+
+/**
+ * Ask backend to convert a file at a public URL (used after uploadToBlob for large files).
+ */
+export async function convertFromUrl(
+  fileUrl: string,
+  filename: string,
+  outputFormat: OutputFormat
+): Promise<Blob> {
+  const response = await fetch(`${API_URL}/api/convert-from-url`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      url: fileUrl,
+      filename,
+      output_format: outputFormat,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'Conversion failed' }));
+    const errorMessage = errorData.detail || errorData.error || `Server error: ${response.status}`;
+    throw new Error(errorMessage);
+  }
+
+  return await response.blob();
+}
+
 export async function convertFile(file: File, outputFormat?: OutputFormat): Promise<Blob> {
   const inputFormat = detectInputFormat(file);
   if (!inputFormat) {
@@ -50,6 +92,12 @@ export async function convertFile(file: File, outputFormat?: OutputFormat): Prom
   }
 
   const targetOutputFormat = outputFormat || getDefaultOutputFormat(inputFormat);
+
+  // For files over Vercel's body limit, upload to Blob first then convert-from-url
+  if (file.size > BLOB_THRESHOLD_BYTES) {
+    const { url } = await uploadToBlob(file);
+    return convertFromUrl(url, file.name, targetOutputFormat);
+  }
 
   const formData = new FormData();
   formData.append('file', file);
