@@ -22,7 +22,6 @@ export default function FileUpload({
   const [error, setError] = useState<string | null>(null);
 
   const validateFile = useCallback((file: File): string | null => {
-    // Check file type based on category
     const extension = file.name.toLowerCase().split('.').pop() || '';
     
     const imageExtensions = ['cr2', 'avif', 'avifs', 'webp', 'heic', 'heif'];
@@ -51,7 +50,6 @@ export default function FileUpload({
       return `Unsupported file type. Supported ${category} formats: ${formatList}`;
     }
 
-    // Check file size (CR2 up to 30MB, otherwise use maxSizeMB)
     const maxAllowedMb = category === 'image' && extension === 'cr2' ? maxSizeMbForCr2 : maxSizeMB;
     const maxSize = maxAllowedMb * 1024 * 1024;
     if (file.size > maxSize) {

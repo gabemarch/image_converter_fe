@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AVIF to PNG Converter",
-  description: "Convert AVIF images to PNG format quickly and easily. Free, fast, and secure image conversion.",
+  title: "FileConverterOnline",
+  description: "Convert images and files between formats quickly and easily. Free, fast, and secure online conversion.",
 };
 
 export default function RootLayout({

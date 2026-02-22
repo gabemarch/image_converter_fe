@@ -1,41 +1,71 @@
 'use client';
 
 import { ConversionState } from '../types/converter';
+import { formatBytes } from '../lib/api';
 
 interface ConversionStatusProps {
   state: ConversionState;
 }
 
 export default function ConversionStatus({ state }: ConversionStatusProps) {
-  const { status, error } = state;
+  const { status, error, uploadProgress } = state;
 
   if (status === 'idle') {
     return null;
   }
 
-  const getConversionMessage = (): string => {
-    if (status === 'uploading') return 'Uploading file...';
-    
-    const inputFormat = state.inputFormat?.toUpperCase() || 'file';
-    const outputFormat = state.outputFormat?.toUpperCase() || 'target format';
-    
-    return `Converting ${inputFormat} to ${outputFormat}...`;
-  };
-
   if (status === 'uploading' || status === 'processing') {
+    const isUploading = status === 'uploading';
+    const hasUploadProgress = uploadProgress && uploadProgress.total > 0;
+    const isIndeterminateUpload = hasUploadProgress && uploadProgress.loaded === 0;
+    const uploadPercent = hasUploadProgress && uploadProgress.total > 0
+      ? Math.round((uploadProgress.loaded / uploadProgress.total) * 100)
+      : 0;
+
+    const statusTitle = isUploading
+      ? (!hasUploadProgress
+          ? 'Uploading file...'
+          : isIndeterminateUpload
+            ? `Uploading to storage (${formatBytes(uploadProgress.total)})...`
+            : `Uploading: ${formatBytes(uploadProgress.loaded)} of ${formatBytes(uploadProgress.total)}`)
+      : `Converting to ${state.outputFormat?.toUpperCase() ?? 'target format'}...`;
+
+    const statusSubtitle = isUploading
+      ? (!hasUploadProgress ? 'Please wait...' : isIndeterminateUpload ? 'Sending file to storage' : `${uploadPercent}% complete`)
+      : 'Processing your file';
+
+    const showProgressBar = isUploading && hasUploadProgress;
+    const progressBarPercent = isUploading ? (isIndeterminateUpload ? undefined : uploadPercent) : undefined;
+
     return (
       <div className="w-full p-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
         <div className="flex items-center space-x-4">
           <div className="flex-shrink-0">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400"></div>
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
-              {getConversionMessage()}
+              {statusTitle}
             </p>
             <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-              Please wait while we process your file
+              {statusSubtitle}
             </p>
+            {showProgressBar && (
+              <div className="mt-3 w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2 overflow-hidden">
+                <div
+                  className="h-full bg-blue-600 dark:bg-blue-400 transition-all duration-300 ease-out rounded-full"
+                  style={{
+                    width: progressBarPercent !== undefined ? `${progressBarPercent}%` : '100%',
+                    animation: progressBarPercent === undefined ? 'pulse 1.5s ease-in-out infinite' : undefined,
+                  }}
+                />
+              </div>
+            )}
+            {status === 'processing' && (
+              <div className="mt-3 w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2 overflow-hidden">
+                <div className="h-full w-full bg-blue-600 dark:bg-blue-400 rounded-full animate-pulse" />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -108,4 +138,3 @@ export default function ConversionStatus({ state }: ConversionStatusProps) {
 
   return null;
 }
-

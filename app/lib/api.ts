@@ -80,7 +80,20 @@ export async function convertFromUrl(
   return await response.blob();
 }
 
-export async function convertFile(file: File, outputFormat?: OutputFormat): Promise<Blob> {
+/**
+ * Format bytes as "X.XX MB" or "X.XX KB".
+ */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+export async function convertFile(
+  file: File,
+  outputFormat?: OutputFormat,
+  onUploadProgress?: (loaded: number, total: number) => void
+): Promise<Blob> {
   const inputFormat = detectInputFormat(file);
   if (!inputFormat) {
     throw new Error('Unsupported file type. Supported formats: CR2, AVIF, WebP, EPUB, MOBI, PDF, HEIC, HEIF');
@@ -93,7 +106,7 @@ export async function convertFile(file: File, outputFormat?: OutputFormat): Prom
 
   const targetOutputFormat = outputFormat || getDefaultOutputFormat(inputFormat);
 
-  // For files over Vercel's body limit, upload to Blob first then convert-from-url
+  // For files over Vercel's body limit, upload to Blob first then convert-from-url (no upload progress from Blob client)
   if (file.size > BLOB_THRESHOLD_BYTES) {
     const { url } = await uploadToBlob(file);
     return convertFromUrl(url, file.name, targetOutputFormat);
@@ -105,25 +118,42 @@ export async function convertFile(file: File, outputFormat?: OutputFormat): Prom
   const url = new URL(`${API_URL}/api/convert`);
   url.searchParams.append('output_format', targetOutputFormat);
 
-  try {
-    const response = await fetch(url.toString(), {
-      method: 'POST',
-      body: formData,
+  return new Promise<Blob>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.responseType = 'blob';
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable && onUploadProgress) {
+        onUploadProgress(e.loaded, e.total);
+      }
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: 'Conversion failed' }));
-      const errorMessage = errorData.detail || errorData.error || `Server error: ${response.status}`;
-      throw new Error(errorMessage);
-    }
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(xhr.response as Blob);
+        return;
+      }
+      const resp = xhr.response as Blob | undefined;
+      if (resp?.text) {
+        resp.text().then((text: string) => {
+          try {
+            const data = JSON.parse(text);
+            reject(new Error(data.detail || data.error || `Server error: ${xhr.status}`));
+          } catch {
+            reject(new Error(`Server error: ${xhr.status}`));
+          }
+        }).catch(() => reject(new Error(`Server error: ${xhr.status}`)));
+      } else {
+        reject(new Error(`Server error: ${xhr.status}`));
+      }
+    });
 
-    return await response.blob();
-  } catch (error) {
-    if (error instanceof Error) {
-      throw error;
-    }
-    throw new Error('Network error. Please check your connection.');
-  }
+    xhr.addEventListener('error', () => reject(new Error('Network error. Please check your connection.')));
+    xhr.addEventListener('abort', () => reject(new Error('Upload cancelled.')));
+
+    xhr.open('POST', url.toString());
+    xhr.send(formData);
+  });
 }
 
 export async function convertAvifToPng(file: File): Promise<Blob> {
@@ -136,6 +166,28 @@ export async function checkApiHealth(): Promise<boolean> {
     return response.ok;
   } catch {
     return false;
+  }
+}
+
+export async function getConversionCount(): Promise<number> {
+  try {
+    const response = await fetch('/api/stats', { cache: 'no-store' });
+    if (!response.ok) return 0;
+    const data = await response.json();
+    return typeof data.totalConversions === 'number' ? data.totalConversions : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function incrementConversionCount(): Promise<number> {
+  try {
+    const response = await fetch('/api/stats/increment', { method: 'POST' });
+    if (!response.ok) return 0;
+    const data = await response.json();
+    return typeof data.totalConversions === 'number' ? data.totalConversions : 0;
+  } catch {
+    return 0;
   }
 }
 

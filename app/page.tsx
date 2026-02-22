@@ -1,23 +1,31 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import FileUpload from './components/FileUpload';
 import ConversionStatus from './components/ConversionStatus';
 import DownloadButton from './components/DownloadButton';
 import { ConversionState, InputFormat, OutputFormat } from './types/converter';
-import { convertFile, uploadToBlob, convertFromUrl, detectInputFormat, getDefaultOutputFormat } from './lib/api';
+import { convertFile, uploadToBlob, convertFromUrl, detectInputFormat, getDefaultOutputFormat, getConversionCount, incrementConversionCount } from './lib/api';
 
 type TabType = 'image' | 'ebook';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabType>('image');
+  const [uploadKey, setUploadKey] = useState(0);
+  const [selectedOutputFormat, setSelectedOutputFormat] = useState<OutputFormat>('png');
+  const [totalConversions, setTotalConversions] = useState<number | null>(null);
   const [conversionState, setConversionState] = useState<ConversionState>({
     status: 'idle',
     file: null,
     convertedFile: null,
     error: null,
     progress: 0,
+    uploadProgress: null,
   });
+
+  useEffect(() => {
+    getConversionCount().then(setTotalConversions);
+  }, []);
 
   const handleFileSelect = useCallback(async (file: File) => {
     const inputFormat = detectInputFormat(file) as InputFormat | null;
@@ -32,7 +40,6 @@ export default function Home() {
       return;
     }
 
-    // Validate that the file matches the active tab
     const imageFormats: InputFormat[] = ['cr2', 'avif', 'webp', 'heic', 'heif'];
     const ebookFormats: InputFormat[] = ['epub', 'mobi', 'pdf'];
     
@@ -50,25 +57,26 @@ export default function Home() {
       return;
     }
 
-    const outputFormat = getDefaultOutputFormat(inputFormat) as OutputFormat;
+    const outputFormat = (activeTab === 'image' ? selectedOutputFormat : getDefaultOutputFormat(inputFormat)) as OutputFormat;
 
+    const totalBytes = file.size;
     setConversionState({
       status: 'uploading',
       file,
       convertedFile: null,
       error: null,
       progress: 0,
+      uploadProgress: { loaded: 0, total: totalBytes },
       inputFormat,
       outputFormat,
     });
 
     try {
-      // For large files (>4MB), upload to Vercel Blob first so we avoid 413; then convert-from-url
       const useBlobFlow = file.size > 4 * 1024 * 1024;
       if (useBlobFlow) {
-        setConversionState(prev => ({ ...prev, status: 'uploading' }));
+        setConversionState(prev => ({ ...prev, status: 'uploading', uploadProgress: { loaded: 0, total: totalBytes } }));
         const { url } = await uploadToBlob(file);
-        setConversionState(prev => ({ ...prev, status: 'processing' }));
+        setConversionState(prev => ({ ...prev, status: 'processing', uploadProgress: null }));
         const convertedBlob = await convertFromUrl(url, file.name, outputFormat);
         setConversionState({
           status: 'success',
@@ -79,18 +87,31 @@ export default function Home() {
           inputFormat,
           outputFormat,
         });
+        const newTotal = await incrementConversionCount();
+        if (typeof newTotal === 'number') setTotalConversions(newTotal);
       } else {
-        setConversionState(prev => ({ ...prev, status: 'processing' }));
-        const convertedBlob = await convertFile(file, outputFormat);
+        const convertedBlob = await convertFile(file, outputFormat, (loaded, total) => {
+          const progress = total ? Math.round((loaded / total) * 100) : 0;
+          const uploadComplete = total > 0 && loaded >= total;
+          setConversionState(prev => ({
+            ...prev,
+            status: uploadComplete ? 'processing' : 'uploading',
+            progress: uploadComplete ? 0 : progress,
+            uploadProgress: uploadComplete ? null : { loaded, total },
+          }));
+        });
         setConversionState({
           status: 'success',
           file,
           convertedFile: convertedBlob,
           error: null,
           progress: 100,
+          uploadProgress: null,
           inputFormat,
           outputFormat,
         });
+        const newTotal = await incrementConversionCount();
+        if (typeof newTotal === 'number') setTotalConversions(newTotal);
       }
     } catch (error) {
       const errorMessage = error instanceof Error 
@@ -103,11 +124,12 @@ export default function Home() {
         convertedFile: null,
         error: errorMessage,
         progress: 0,
+        uploadProgress: null,
         inputFormat,
         outputFormat,
       });
     }
-  }, [activeTab]);
+  }, [activeTab, selectedOutputFormat]);
 
   const handleReset = useCallback(() => {
     setConversionState({
@@ -116,7 +138,9 @@ export default function Home() {
       convertedFile: null,
       error: null,
       progress: 0,
+      uploadProgress: null,
     });
+    setUploadKey((k) => k + 1);
   }, []);
 
   const handleTabChange = useCallback((tab: TabType) => {
@@ -146,7 +170,7 @@ export default function Home() {
         <div className="max-w-2xl mx-auto">
           <div className="text-center mb-8 sm:mb-12">
             <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 dark:text-white mb-4">
-              {activeTab === 'image' ? 'Image Converter' : 'Ebook Converter'}
+              FileConverterOnline
             </h1>
             <p className="text-lg text-gray-600 dark:text-gray-300">
               {activeTab === 'image' 
@@ -154,6 +178,12 @@ export default function Home() {
                 : 'Convert your ebooks to AZW3 format'
               }
             </p>
+            {totalConversions !== null && (
+              <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+                <span className="font-semibold text-gray-700 dark:text-gray-300">{totalConversions.toLocaleString()}</span>
+                {' '}files converted in total
+              </p>
+            )}
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl overflow-hidden">
@@ -187,8 +217,47 @@ export default function Home() {
             </div>
 
             <div className="p-6 sm:p-8">
+              {activeTab === 'image' && (
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Output format
+                  </label>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedOutputFormat('png')}
+                      className={`
+                        px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                        ${selectedOutputFormat === 'png'
+                          ? 'bg-blue-600 text-white ring-2 ring-blue-600 ring-offset-2 dark:ring-offset-gray-800'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        }
+                      `}
+                    >
+                      PNG
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedOutputFormat('jpg')}
+                      className={`
+                        px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                        ${selectedOutputFormat === 'jpg'
+                          ? 'bg-blue-600 text-white ring-2 ring-blue-600 ring-offset-2 dark:ring-offset-gray-800'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        }
+                      `}
+                    >
+                      JPG
+                    </button>
+                  </div>
+                  <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    Choose the format for your converted image
+                  </p>
+                </div>
+              )}
               <div className="mb-6">
                 <FileUpload
+                  key={uploadKey}
                   onFileSelect={handleFileSelect}
                   disabled={conversionState.status === 'uploading' || conversionState.status === 'processing'}
                   category={activeTab}
