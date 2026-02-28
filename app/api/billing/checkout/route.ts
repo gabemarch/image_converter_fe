@@ -62,11 +62,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Checkout not configured' }, { status: 503 });
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.VERCEL_URL
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? (process.env.VERCEL_URL
     ? `https://${process.env.VERCEL_URL}`
-    : 'http://localhost:3000';
-  const successUrl = process.env.STRIPE_SUCCESS_URL ?? `${baseUrl}?checkout=success`;
-  const cancelUrl = process.env.STRIPE_CANCEL_URL ?? `${baseUrl}?checkout=canceled`;
+    : 'http://localhost:3000');
+  const successUrl = process.env.STRIPE_SUCCESS_URL ?? `${baseUrl}/#pricing?checkout=success`;
+  const cancelUrl = process.env.STRIPE_CANCEL_URL ?? `${baseUrl}/#pricing?checkout=canceled`;
 
   try {
     const existing = await getSubscription(userId);

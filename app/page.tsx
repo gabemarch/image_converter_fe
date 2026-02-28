@@ -27,10 +27,24 @@ export default function Home() {
     progress: 0,
     uploadProgress: null,
   });
+  const [checkoutMessage, setCheckoutMessage] = useState<'success' | 'canceled' | null>(null);
 
   useEffect(() => {
     getPlan().then(setPlanResponse);
     getConversionCount().then(setTotalConversions);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('checkout');
+    if (status === 'success' || status === 'canceled') {
+      setCheckoutMessage(status);
+      params.delete('checkout');
+      const clean = window.location.pathname + (params.toString() ? `?${params}` : '') + window.location.hash;
+      window.history.replaceState({}, '', clean);
+      document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, []);
 
   const handleFileSelect = useCallback(async (file: File) => {
@@ -427,6 +441,16 @@ export default function Home() {
             <h2 className="text-2xl font-bold text-center text-gray-900 dark:text-white mb-6">
               Plans &amp; Pricing
             </h2>
+            {checkoutMessage === 'success' && (
+              <div className="mb-6 p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-center text-green-800 dark:text-green-200">
+                Thank you — your subscription is active. You can manage billing below.
+              </div>
+            )}
+            {checkoutMessage === 'canceled' && (
+              <div className="mb-6 p-4 rounded-lg bg-gray-100 dark:bg-gray-800 text-center text-gray-700 dark:text-gray-300">
+                Checkout was canceled. Choose a plan below when you&apos;re ready.
+              </div>
+            )}
             <Pricing planResponse={planResponse} onRefresh={() => getPlan().then(setPlanResponse)} />
           </section>
 
