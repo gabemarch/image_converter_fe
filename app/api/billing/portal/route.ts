@@ -3,7 +3,11 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { getSubscription } from '@/app/lib/subscription';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? '');
+function getStripe(): Stripe | null {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) return null;
+  return new Stripe(key);
+}
 
 export async function POST() {
   const { userId } = await auth();
@@ -11,6 +15,14 @@ export async function POST() {
     return NextResponse.json(
       { error: 'Sign in to manage billing' },
       { status: 401 }
+    );
+  }
+
+  const stripe = getStripe();
+  if (!stripe) {
+    return NextResponse.json(
+      { error: 'Billing not configured' },
+      { status: 503 }
     );
   }
 

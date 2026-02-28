@@ -10,17 +10,22 @@ import {
   type SubscriptionStatus,
 } from '@/app/lib/subscription';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? '');
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET ?? '';
+function getStripe(): Stripe | null {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) return null;
+  return new Stripe(key);
+}
 
 function planFromPriceId(priceId: string): Plan | null {
   return priceIdToPlan(priceId);
 }
 
 export async function POST(request: Request) {
+  const stripe = getStripe();
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   const sig = request.headers.get('stripe-signature');
-  if (!sig || !webhookSecret) {
-    return NextResponse.json({ error: 'Missing signature or secret' }, { status: 400 });
+  if (!stripe || !webhookSecret || !sig) {
+    return NextResponse.json({ error: 'Missing configuration or signature' }, { status: 400 });
   }
 
   let rawBody: string;

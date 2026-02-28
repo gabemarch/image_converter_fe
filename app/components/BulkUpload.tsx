@@ -228,8 +228,7 @@ export default function BulkUpload({
           <button
             type="button"
             onClick={handleConvert}
-            disabled={status === 'uploading' || status === 'converting'}
-            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-50"
+            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
           >
             Convert {files.length} file{files.length !== 1 ? 's' : ''}
           </button>

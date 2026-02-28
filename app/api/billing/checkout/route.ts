@@ -7,7 +7,11 @@ import {
   setStripeCustomerMapping,
 } from '@/app/lib/subscription';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? '');
+function getStripe(): Stripe | null {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) return null;
+  return new Stripe(key);
+}
 
 const VALID_PRICE_IDS = new Set([
   STRIPE_PRICE_IDS.starter_monthly,
@@ -51,6 +55,11 @@ export async function POST(request: Request) {
   const plan = priceIdToPlan(priceId) as Plan | null;
   if (!plan) {
     return NextResponse.json({ error: 'Unknown plan' }, { status: 400 });
+  }
+
+  const stripe = getStripe();
+  if (!stripe) {
+    return NextResponse.json({ error: 'Checkout not configured' }, { status: 503 });
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.VERCEL_URL
