@@ -60,7 +60,7 @@ export async function POST(request: Request) {
           status: 'active',
           stripeCustomerId: customerId,
           stripeSubscriptionId: subId,
-          currentPeriodEnd: sub.current_period_end,
+          currentPeriodEnd: item?.current_period_end ?? 0,
           priceId,
         };
         await setSubscription(clerkUserId, record);
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
           status,
           stripeCustomerId: customerId,
           stripeSubscriptionId: sub.id,
-          currentPeriodEnd: sub.current_period_end,
+          currentPeriodEnd: item?.current_period_end ?? 0,
           priceId,
         };
         await setSubscription(clerkUserId, record);
