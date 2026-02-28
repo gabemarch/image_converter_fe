@@ -16,7 +16,7 @@ export default function AdUnit({
   slot = ADSENSE_SLOT_INLINE,
   format = 'auto',
 }: AdUnitProps) {
-  const ref = useRef<HTMLElement>(null);
+  const ref = useRef<HTMLModElement>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !ADSENSE_CLIENT || !slot) return;
