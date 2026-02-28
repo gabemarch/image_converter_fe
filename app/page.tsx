@@ -210,6 +210,14 @@ export default function Home() {
               </SignInButton>
             </SignedOut>
             <SignedIn>
+              {(planResponse?.plan === 'starter' || planResponse?.plan === 'pro') && (
+                <span
+                  className="px-2.5 py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200"
+                  title="Subscription plan"
+                >
+                  {planResponse.plan === 'pro' ? 'Pro' : 'Starter'}
+                </span>
+              )}
               <UserButton afterSignOutUrl="/" />
             </SignedIn>
           </div>
