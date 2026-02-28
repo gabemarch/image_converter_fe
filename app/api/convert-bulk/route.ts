@@ -4,7 +4,7 @@ import { getRequestIdentity, getIdentityId } from '@/app/lib/identity';
 import { getUserPlan } from '@/app/lib/subscription';
 import { assertWithinLimits, incrementUsage, UsageLimitError } from '@/app/lib/usage';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'https://image-converter-be-stqy.vercel.app';
+const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'https://image-converter-be-stqy.vercel.app';
 
 function outputFilename(filename: string, outputFormat: string): string {
   const stem = filename.replace(/\.[^.]+$/, '');
