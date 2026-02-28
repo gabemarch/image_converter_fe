@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useAuth } from '@clerk/nextjs';
+import { useAuth, useClerk } from '@clerk/nextjs';
 import type { PlanResponse } from '../lib/api';
 
 const PRICES = {
@@ -16,6 +16,7 @@ interface PricingProps {
 
 export default function Pricing({ planResponse, onRefresh }: PricingProps) {
   const { isSignedIn } = useAuth();
+  const { openSignIn } = useClerk();
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [loading, setLoading] = useState<string | null>(null);
 
@@ -24,7 +25,7 @@ export default function Pricing({ planResponse, onRefresh }: PricingProps) {
 
   const handleCheckout = async (tier: 'starter' | 'pro') => {
     if (!isSignedIn) {
-      window.location.href = '/sign-in?redirect_url=' + encodeURIComponent(window.location.pathname);
+      openSignIn?.({ redirectUrl: window.location.pathname + '#pricing' });
       return;
     }
     setLoading(tier);
