@@ -1,11 +1,15 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
+import { SignInButton, SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
 import FileUpload from './components/FileUpload';
+import BulkUpload from './components/BulkUpload';
 import ConversionStatus from './components/ConversionStatus';
 import DownloadButton from './components/DownloadButton';
+import AdUnit from './components/AdUnit';
+import Pricing from './components/Pricing';
 import { ConversionState, InputFormat, OutputFormat } from './types/converter';
-import { convertFile, uploadToBlob, convertFromUrl, detectInputFormat, getDefaultOutputFormat, getConversionCount, incrementConversionCount } from './lib/api';
+import { convertFile, uploadToBlob, convertFromUrl, detectInputFormat, getDefaultOutputFormat, getConversionCount, incrementConversionCount, getPlan, type PlanResponse } from './lib/api';
 
 type TabType = 'image' | 'ebook';
 
@@ -13,6 +17,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<TabType>('image');
   const [uploadKey, setUploadKey] = useState(0);
   const [selectedOutputFormat, setSelectedOutputFormat] = useState<OutputFormat>('png');
+  const [planResponse, setPlanResponse] = useState<PlanResponse | null>(null);
   const [totalConversions, setTotalConversions] = useState<number | null>(null);
   const [conversionState, setConversionState] = useState<ConversionState>({
     status: 'idle',
@@ -24,6 +29,7 @@ export default function Home() {
   });
 
   useEffect(() => {
+    getPlan().then(setPlanResponse);
     getConversionCount().then(setTotalConversions);
   }, []);
 
@@ -89,6 +95,7 @@ export default function Home() {
         });
         const newTotal = await incrementConversionCount();
         if (typeof newTotal === 'number') setTotalConversions(newTotal);
+        getPlan().then(setPlanResponse);
       } else {
         const convertedBlob = await convertFile(file, outputFormat, (loaded, total) => {
           const progress = total ? Math.round((loaded / total) * 100) : 0;
@@ -112,6 +119,7 @@ export default function Home() {
         });
         const newTotal = await incrementConversionCount();
         if (typeof newTotal === 'number') setTotalConversions(newTotal);
+        getPlan().then(setPlanResponse);
       }
     } catch (error) {
       const errorMessage = error instanceof Error 
@@ -164,13 +172,40 @@ export default function Home() {
   };
 
 
+  const maxSizeMB = planResponse?.entitlements?.maxFileSizeMB ?? 10;
+  const usage = planResponse?.usage;
+  const isLimitError =
+    conversionState.status === 'error' &&
+    conversionState.error &&
+    (conversionState.error.includes('limit') ||
+      conversionState.error.includes('Upgrade') ||
+      conversionState.error.includes('daily') ||
+      conversionState.error.includes('monthly'));
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
+      <header className="border-b border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/80 backdrop-blur">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between max-w-4xl">
+          <span className="font-semibold text-gray-900 dark:text-white">FileConverterOnline</span>
+          <div className="flex items-center gap-2">
+            <SignedOut>
+              <SignInButton mode="modal">
+                <button className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                  Sign in
+                </button>
+              </SignInButton>
+            </SignedOut>
+            <SignedIn>
+              <UserButton afterSignOutUrl="/" />
+            </SignedIn>
+          </div>
+        </div>
+      </header>
       <div className="container mx-auto px-4 py-8 sm:py-16">
         <div className="max-w-2xl mx-auto">
           <div className="text-center mb-8 sm:mb-12">
             <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 dark:text-white mb-4">
-              FileConverterOnline
+              {activeTab === 'image' ? 'Image Converter' : 'Ebook Converter'}
             </h1>
             <p className="text-lg text-gray-600 dark:text-gray-300">
               {activeTab === 'image' 
@@ -178,13 +213,30 @@ export default function Home() {
                 : 'Convert your ebooks to AZW3 format'
               }
             </p>
+            {usage && (usage.dailyLimit != null || usage.monthlyLimit != null) && (
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                {usage.dailyLimit != null && (
+                  <>Usage: {usage.dailyUsed} / {usage.dailyLimit} today</>
+                )}
+                {usage.dailyLimit != null && usage.monthlyLimit != null && ' · '}
+                {usage.monthlyLimit != null && (
+                  <> {usage.monthlyUsed} / {usage.monthlyLimit} this month</>
+                )}
+              </p>
+            )}
             {totalConversions !== null && (
-              <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 <span className="font-semibold text-gray-700 dark:text-gray-300">{totalConversions.toLocaleString()}</span>
                 {' '}files converted in total
               </p>
             )}
           </div>
+
+          {planResponse?.entitlements?.adsEnabled && (
+            <div className="mb-6 flex justify-center">
+              <AdUnit className="min-h-[90px] w-full max-w-[728px]" />
+            </div>
+          )}
 
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl overflow-hidden">
             <div className="border-b border-gray-200 dark:border-gray-700">
@@ -261,6 +313,7 @@ export default function Home() {
                   onFileSelect={handleFileSelect}
                   disabled={conversionState.status === 'uploading' || conversionState.status === 'processing'}
                   category={activeTab}
+                  maxSizeMB={maxSizeMB}
                 />
               </div>
 
@@ -286,7 +339,12 @@ export default function Home() {
             )}
 
             {conversionState.status === 'error' && (
-              <div className="flex justify-center">
+              <div className="flex flex-col items-center gap-3">
+                {isLimitError && planResponse?.plan === 'free' && (
+                  <p className="text-sm text-blue-600 dark:text-blue-400">
+                    <a href="#pricing" className="underline font-medium">Upgrade</a> for higher limits and no ads.
+                  </p>
+                )}
                 <button
                   onClick={handleReset}
                   className="px-6 py-3 rounded-lg font-medium border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
@@ -295,6 +353,20 @@ export default function Home() {
                 </button>
               </div>
             )}
+            </div>
+          </div>
+
+          <div className="mt-8">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+              Bulk convert
+            </h2>
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl overflow-hidden p-6 sm:p-8">
+              <BulkUpload
+                maxFilesPerJob={planResponse?.entitlements?.maxFilesPerJob ?? 10}
+                maxSizeMB={planResponse?.entitlements?.maxFileSizeMB ?? 10}
+                bulkEnabled={planResponse?.entitlements?.bulkEnabled ?? false}
+                onLimitError={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })}
+              />
             </div>
           </div>
 
@@ -350,6 +422,19 @@ export default function Home() {
               </div>
             </div>
           </div>
+
+          <section id="pricing" className="mt-12 mb-8">
+            <h2 className="text-2xl font-bold text-center text-gray-900 dark:text-white mb-6">
+              Plans &amp; Pricing
+            </h2>
+            <Pricing planResponse={planResponse} onRefresh={() => getPlan().then(setPlanResponse)} />
+          </section>
+
+          {planResponse?.entitlements?.adsEnabled && (
+            <div className="mt-8 flex justify-center">
+              <AdUnit className="min-h-[90px] w-full max-w-[728px]" />
+            </div>
+          )}
 
           <div className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
             <p>Free file conversion • No file storage • Privacy guaranteed</p>

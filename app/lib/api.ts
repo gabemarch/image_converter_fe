@@ -53,6 +53,9 @@ export async function uploadToBlob(file: File): Promise<{ url: string }> {
   return { url: blob.url };
 }
 
+/** Use our API proxy so limits and usage are enforced server-side. */
+const CONVERT_API = typeof window !== 'undefined' ? '' : (process.env.NEXT_PUBLIC_APP_URL ?? '');
+
 /**
  * Ask backend to convert a file at a public URL (used after uploadToBlob for large files).
  */
@@ -61,7 +64,8 @@ export async function convertFromUrl(
   filename: string,
   outputFormat: OutputFormat
 ): Promise<Blob> {
-  const response = await fetch(`${API_URL}/api/convert-from-url`, {
+  const base = typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000');
+  const response = await fetch(`${base}/api/convert-from-url`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -74,7 +78,9 @@ export async function convertFromUrl(
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ detail: 'Conversion failed' }));
     const errorMessage = errorData.detail || errorData.error || `Server error: ${response.status}`;
-    throw new Error(errorMessage);
+    const err = new Error(errorMessage) as Error & { code?: string };
+    if (response.status === 402) err.code = errorData.code;
+    throw err;
   }
 
   return await response.blob();
@@ -115,7 +121,8 @@ export async function convertFile(
   const formData = new FormData();
   formData.append('file', file);
 
-  const url = new URL(`${API_URL}/api/convert`);
+  const base = typeof window !== 'undefined' ? window.location.origin : CONVERT_API || 'http://localhost:3000';
+  const url = new URL(`${base}/api/convert`);
   url.searchParams.append('output_format', targetOutputFormat);
 
   return new Promise<Blob>((resolve, reject) => {
@@ -189,5 +196,77 @@ export async function incrementConversionCount(): Promise<number> {
   } catch {
     return 0;
   }
+}
+
+/** Plan/entitlements from /api/me/plan (for UI gating and limits). */
+export interface PlanResponse {
+  plan: 'free' | 'starter' | 'pro';
+  entitlements: {
+    plan: string;
+    adsEnabled: boolean;
+    bulkEnabled: boolean;
+    maxFilesPerJob: number;
+    maxFileSizeBytes: number;
+    maxFileSizeMB?: number;
+    conversionsPerDay?: number;
+    conversionsPerMonth?: number;
+    priority: string;
+  };
+  usage: {
+    dailyUsed: number;
+    dailyLimit: number | null;
+    monthlyUsed: number;
+    monthlyLimit: number | null;
+  };
+  subscription: { status: string; currentPeriodEnd: number } | null;
+}
+
+export async function getPlan(): Promise<PlanResponse> {
+  const res = await fetch('/api/me/plan', { cache: 'no-store' });
+  if (!res.ok) {
+    return {
+      plan: 'free',
+      entitlements: {
+        plan: 'free',
+        adsEnabled: true,
+        bulkEnabled: false,
+        maxFilesPerJob: 1,
+        maxFileSizeBytes: 10 * 1024 * 1024,
+        maxFileSizeMB: 10,
+        conversionsPerDay: 5,
+        priority: 'standard',
+      },
+      usage: { dailyUsed: 0, dailyLimit: 5, monthlyUsed: 0, monthlyLimit: null },
+      subscription: null,
+    };
+  }
+  return res.json();
+}
+
+/**
+ * Bulk convert: upload files to Blob, then call convert-bulk API; returns zip Blob.
+ */
+export async function convertBulk(
+  files: File[],
+  outputFormat: OutputFormat
+): Promise<Blob> {
+  const base = typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000');
+  const urls: { url: string; filename: string }[] = [];
+  for (const file of files) {
+    const { url } = await uploadToBlob(file);
+    urls.push({ url, filename: file.name });
+  }
+  const res = await fetch(`${base}/api/convert-bulk`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ urls, output_format: outputFormat }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: 'Bulk conversion failed' }));
+    const err = new Error(data.detail || data.error || `Server error: ${res.status}`) as Error & { code?: string };
+    if (res.status === 402) err.code = data.code;
+    throw err;
+  }
+  return res.blob();
 }
 
