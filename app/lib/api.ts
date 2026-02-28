@@ -221,6 +221,14 @@ export interface PlanResponse {
   subscription: { status: string; currentPeriodEnd: number } | null;
 }
 
+/**
+ * Fetches the current user's plan from the backend. The plan is Stripe-backed:
+ * - Normal flow: user subscribes via checkout → Stripe webhooks hit /api/stripe/webhook →
+ *   backend writes subscription to Redis (sub:{clerkUserId}). This API reads from Redis.
+ * - Sync flow: if signed in but no subscription in Redis, GET /api/me/plan looks up Stripe
+ *   by Clerk metadata (stripeCustomerId) or primary email, finds active subscription,
+ *   writes to Redis, then returns starter/pro. So the plan always reflects Stripe.
+ */
 export async function getPlan(): Promise<PlanResponse> {
   const res = await fetch('/api/me/plan', { cache: 'no-store' });
   if (!res.ok) {
