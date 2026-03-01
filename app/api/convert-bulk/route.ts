@@ -21,20 +21,38 @@ function isInternalFileUrl(url: string): boolean {
   }
 }
 
+/** Resolve internal file URL so server-side fetch hits same instance (avoids 404 when multi-replica). */
+function resolveInternalFileUrl(url: string): string {
+  const internalBase = process.env.INTERNAL_APP_URL;
+  const publicBase = process.env.NEXT_PUBLIC_APP_URL;
+  if (internalBase && publicBase && url.startsWith(publicBase)) {
+    return url.replace(publicBase, internalBase.replace(/\/$/, ''));
+  }
+  return url;
+}
+
 /** Fetch file from our server and convert via backend /api/convert (multipart). */
 async function convertInternalFile(
   fileUrl: string,
   filename: string,
   outputFormat: string
 ): Promise<Blob> {
-  const fileRes = await fetch(fileUrl);
+  const resolvedUrl = resolveInternalFileUrl(fileUrl);
+  const fileRes = await fetch(resolvedUrl);
   if (!fileRes.ok) {
     const err = await fileRes.json().catch(() => ({ error: 'Failed to fetch file' }));
     throw new Error(err.error || err.detail || `Failed to fetch file: ${fileRes.status}`);
   }
-  const fileBlob = await fileRes.blob();
+  const buf = await fileRes.arrayBuffer();
+  const contentType = fileRes.headers.get('content-type') || 'application/octet-stream';
+  const blob = new Blob([buf], { type: contentType });
   const formData = new FormData();
-  formData.append('file', fileBlob, filename);
+  // Use File when available (Node 20+) so backend receives part with filename; else Blob + filename arg
+  const filePart =
+    typeof File !== 'undefined'
+      ? new (File as typeof globalThis.File)([blob], filename, { type: blob.type })
+      : blob;
+  formData.append('file', filePart, filename);
 
   const res = await fetch(
     `${BACKEND_URL}/api/convert?output_format=${encodeURIComponent(outputFormat)}`,

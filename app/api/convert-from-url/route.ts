@@ -13,6 +13,15 @@ function isInternalFileUrl(url: string): boolean {
   }
 }
 
+function resolveInternalFileUrl(url: string): string {
+  const internalBase = process.env.INTERNAL_APP_URL;
+  const publicBase = process.env.NEXT_PUBLIC_APP_URL;
+  if (internalBase && publicBase && url.startsWith(publicBase)) {
+    return url.replace(publicBase, internalBase.replace(/\/$/, ''));
+  }
+  return url;
+}
+
 export async function POST(request: Request) {
   const identity = await getRequestIdentity();
   const identityId = getIdentityId(identity);
@@ -49,7 +58,8 @@ export async function POST(request: Request) {
 
   let res: Response;
   if (isInternalFileUrl(fileUrl)) {
-    const fileRes = await fetch(fileUrl);
+    const resolvedUrl = resolveInternalFileUrl(fileUrl);
+    const fileRes = await fetch(resolvedUrl);
     if (!fileRes.ok) {
       const err = await fileRes.json().catch(() => ({ error: 'Failed to fetch file' }));
       return NextResponse.json(
@@ -57,9 +67,16 @@ export async function POST(request: Request) {
         { status: fileRes.status }
       );
     }
-    const fileBlob = await fileRes.blob();
+    const buf = await fileRes.arrayBuffer();
+    const contentType = fileRes.headers.get('content-type') || 'application/octet-stream';
+    const blob = new Blob([buf], { type: contentType });
     const formData = new FormData();
-    formData.append('file', fileBlob, filename || 'file');
+    const name = filename || 'file';
+    const filePart =
+      typeof File !== 'undefined'
+        ? new (File as typeof globalThis.File)([blob], name, { type: blob.type })
+        : blob;
+    formData.append('file', filePart, name);
     res = await fetch(
       `${BACKEND_URL}/api/convert?output_format=${encodeURIComponent(output_format)}`,
       { method: 'POST', body: formData }
