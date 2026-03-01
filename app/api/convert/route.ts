@@ -3,7 +3,10 @@ import { getRequestIdentity, getIdentityId } from '@/app/lib/identity';
 import { getUserPlan } from '@/app/lib/subscription';
 import { assertWithinLimits, incrementUsage, UsageLimitError } from '@/app/lib/usage';
 
-const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'https://image-converter-be-stqy.vercel.app';
+const BACKEND_URL =
+  process.env.BACKEND_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  'http://localhost:8000';
 
 export async function POST(request: Request) {
   const identity = await getRequestIdentity();

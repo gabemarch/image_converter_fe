@@ -301,7 +301,12 @@ export async function convertBulk(
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: 'Bulk conversion failed' }));
-    const err = new Error(data.detail || data.error || `Server error: ${res.status}`) as Error & { code?: string };
+    let msg = data.detail || data.error || `Server error: ${res.status}`;
+    if (Array.isArray(data.failures) && data.failures.length > 0) {
+      const first = data.failures[0] as { filename?: string; error?: string };
+      msg += ` (e.g. ${first.filename ?? 'file'}: ${first.error ?? 'unknown'})`;
+    }
+    const err = new Error(msg) as Error & { code?: string };
     if (res.status === 402) err.code = data.code;
     throw err;
   }

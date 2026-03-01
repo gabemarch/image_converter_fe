@@ -4,7 +4,11 @@ import { getRequestIdentity, getIdentityId } from '@/app/lib/identity';
 import { getUserPlan } from '@/app/lib/subscription';
 import { assertWithinLimits, incrementUsage, UsageLimitError } from '@/app/lib/usage';
 
-const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'https://image-converter-be-stqy.vercel.app';
+const BACKEND_URL =
+  process.env.BACKEND_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  'http://localhost:8000';
+
 
 function outputFilename(filename: string, outputFormat: string): string {
   const stem = filename.replace(/\.[^.]+$/, '');
@@ -38,12 +42,16 @@ async function convertInternalFile(
   outputFormat: string
 ): Promise<Blob> {
   const resolvedUrl = resolveInternalFileUrl(fileUrl);
+
   const fileRes = await fetch(resolvedUrl);
   if (!fileRes.ok) {
     const err = await fileRes.json().catch(() => ({ error: 'Failed to fetch file' }));
-    throw new Error(err.error || err.detail || `Failed to fetch file: ${fileRes.status}`);
+    const msg = err.error || err.detail || `Failed to fetch file: ${fileRes.status}`;
+
+    throw new Error(msg);
   }
   const buf = await fileRes.arrayBuffer();
+
   const contentType = fileRes.headers.get('content-type') || 'application/octet-stream';
   const blob = new Blob([buf], { type: contentType });
   const formData = new FormData();
@@ -54,33 +62,37 @@ async function convertInternalFile(
       : blob;
   formData.append('file', filePart, filename);
 
-  const res = await fetch(
-    `${BACKEND_URL}/api/convert?output_format=${encodeURIComponent(outputFormat)}`,
-    { method: 'POST', body: formData }
-  );
+  const backendConvertUrl = `${BACKEND_URL}/api/convert?output_format=${encodeURIComponent(outputFormat)}`;
+  const res = await fetch(backendConvertUrl, { method: 'POST', body: formData });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Conversion failed' }));
-    throw new Error(err.detail || String(err));
+    const msg = err.detail || String(err);
+    throw new Error(msg);
   }
   return res.blob();
 }
 
 export async function POST(request: Request) {
+
   const identity = await getRequestIdentity();
   const identityId = getIdentityId(identity);
   const plan = await getUserPlan(identityId);
 
+
   let body: { urls?: { url: string; filename: string }[]; output_format?: string };
   try {
     body = await request.json();
-  } catch {
+  } catch (e) {
+
     return NextResponse.json({ detail: 'Invalid JSON' }, { status: 400 });
   }
 
   const { urls = [], output_format = 'png' } = body;
+
   if (!Array.isArray(urls) || urls.length === 0) {
     return NextResponse.json({ detail: 'Provide at least one url with filename' }, { status: 400 });
   }
+
 
   try {
     await assertWithinLimits({
@@ -104,8 +116,9 @@ export async function POST(request: Request) {
   const results = await Promise.allSettled(
     urls.map(async ({ url, filename }) => {
       const name = outputFilename(filename || 'file', output_format);
+      const internal = isInternalFileUrl(url);
       let blob: Blob;
-      if (isInternalFileUrl(url)) {
+      if (internal) {
         blob = await convertInternalFile(url, filename || 'file', output_format);
       } else {
         const res = await fetch(`${BACKEND_URL}/api/convert-from-url`, {
@@ -135,18 +148,22 @@ export async function POST(request: Request) {
     if (result.status === 'fulfilled') {
       succeeded.push(result.value);
     } else {
+      const errMsg = result.reason?.message ?? 'Conversion failed';
       failed.push({
         filename: item?.filename ?? `file ${i + 1}`,
-        error: result.reason?.message ?? 'Conversion failed',
+        error: errMsg,
       });
     }
   });
 
+
   for (const { name, blob } of succeeded) {
-    zip.file(name, blob);
+    const buf = await blob.arrayBuffer();
+    zip.file(name, buf);
   }
 
   if (succeeded.length === 0) {
+    console.error('[convert-bulk] All conversions failed', { failures: failed });
     return NextResponse.json(
       { detail: 'All conversions failed', failures: failed },
       { status: 500 }

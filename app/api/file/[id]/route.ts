@@ -48,7 +48,7 @@ export async function GET(
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
       return NextResponse.json({ error: 'File not found or already consumed' }, { status: 404 });
     }
-    console.error('File serve error:', e);
+    console.error('[api/file] serve error', e);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
