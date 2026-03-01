@@ -38,7 +38,7 @@ export async function getUserPlan(userIdOrIdentityId: string): Promise<Plan> {
   if (userIdOrIdentityId.startsWith('anon:')) return 'free';
   const sub = await getSubscription(userIdOrIdentityId);
   if (!sub) return 'free';
-  if (sub.status !== 'active') return 'free';
+  if (sub.status !== 'active' && sub.status !== 'trialing') return 'free';
   return sub.plan;
 }
 

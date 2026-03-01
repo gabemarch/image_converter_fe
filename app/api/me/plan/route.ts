@@ -26,10 +26,12 @@ async function syncStripeSubscriptionToRedis(
 ): Promise<SyncResult> {
   const subscriptions = await stripe.subscriptions.list({
     customer: customerId,
-    status: 'active',
-    limit: 1,
+    status: 'all',
+    limit: 10,
   });
-  const stripeSub = subscriptions.data[0];
+  const stripeSub = subscriptions.data.find(
+    (s) => s.status === 'active' || s.status === 'trialing'
+  );
   if (!stripeSub) return { ok: false, reason: 'no_subscription' };
 
   const item = stripeSub.items.data[0];
