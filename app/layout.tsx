@@ -17,6 +17,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "FileConverterOnline",
   description: "Convert images and files between formats quickly and easily. Free, fast, and secure online conversion.",
+  other: {
+    "google-adsense-account": "ca-pub-4042775489017234",
+  },
 };
 
 export default function RootLayout({
