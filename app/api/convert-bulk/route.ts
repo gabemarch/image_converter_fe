@@ -11,6 +11,42 @@ function outputFilename(filename: string, outputFormat: string): string {
   return `${stem}.${outputFormat}`;
 }
 
+/** True if this URL is our self-hosted file (backend cannot reach localhost / internal URLs). */
+function isInternalFileUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.pathname.startsWith('/api/file/');
+  } catch {
+    return false;
+  }
+}
+
+/** Fetch file from our server and convert via backend /api/convert (multipart). */
+async function convertInternalFile(
+  fileUrl: string,
+  filename: string,
+  outputFormat: string
+): Promise<Blob> {
+  const fileRes = await fetch(fileUrl);
+  if (!fileRes.ok) {
+    const err = await fileRes.json().catch(() => ({ error: 'Failed to fetch file' }));
+    throw new Error(err.error || err.detail || `Failed to fetch file: ${fileRes.status}`);
+  }
+  const fileBlob = await fileRes.blob();
+  const formData = new FormData();
+  formData.append('file', fileBlob, filename);
+
+  const res = await fetch(
+    `${BACKEND_URL}/api/convert?output_format=${encodeURIComponent(outputFormat)}`,
+    { method: 'POST', body: formData }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Conversion failed' }));
+    throw new Error(err.detail || String(err));
+  }
+  return res.blob();
+}
+
 export async function POST(request: Request) {
   const identity = await getRequestIdentity();
   const identityId = getIdentityId(identity);
@@ -49,21 +85,26 @@ export async function POST(request: Request) {
 
   const results = await Promise.allSettled(
     urls.map(async ({ url, filename }) => {
-      const res = await fetch(`${BACKEND_URL}/api/convert-from-url`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url,
-          filename: filename || undefined,
-          output_format,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: 'Conversion failed' }));
-        throw new Error(err.detail || String(err));
-      }
-      const blob = await res.blob();
       const name = outputFilename(filename || 'file', output_format);
+      let blob: Blob;
+      if (isInternalFileUrl(url)) {
+        blob = await convertInternalFile(url, filename || 'file', output_format);
+      } else {
+        const res = await fetch(`${BACKEND_URL}/api/convert-from-url`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url,
+            filename: filename || undefined,
+            output_format,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: 'Conversion failed' }));
+          throw new Error(err.detail || String(err));
+        }
+        blob = await res.blob();
+      }
       return { name, blob };
     })
   );

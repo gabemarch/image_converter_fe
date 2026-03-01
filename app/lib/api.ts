@@ -1,4 +1,3 @@
-import { upload } from '@vercel/blob/client';
 import { OutputFormat } from '../types/converter';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://image-converter-be-stqy.vercel.app';
@@ -42,22 +41,51 @@ export function getDefaultOutputFormat(inputFormat: string): OutputFormat {
 }
 
 /**
- * Upload file to Vercel Blob (client → Blob directly, bypasses 4.5MB serverless limit).
- * @see https://vercel.com/docs/vercel-blob/client-upload
+ * Upload file to our server (Hetzner/self-hosted). Returns a signed URL the backend can fetch.
+ * Used for large single-file and all bulk conversions.
  */
-export async function uploadToBlob(file: File): Promise<{ url: string }> {
-  const blob = await upload(file.name, file, {
-    access: 'public',
-    handleUploadUrl: '/api/upload',
+export async function uploadToServer(
+  file: File,
+  onProgress?: (loaded: number, total: number) => void
+): Promise<{ url: string }> {
+  const base = typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000');
+  const formData = new FormData();
+  formData.append('file', file);
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${base}/api/upload-file`);
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable && onProgress) onProgress(e.loaded, e.total);
+    });
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText) as { url?: string };
+          if (data?.url) resolve({ url: data.url });
+          else reject(new Error('Invalid upload response'));
+        } catch {
+          reject(new Error('Invalid upload response'));
+        }
+      } else {
+        try {
+          const err = JSON.parse(xhr.responseText) as { error?: string };
+          reject(new Error(err?.error ?? `Upload failed: ${xhr.status}`));
+        } catch {
+          reject(new Error(`Upload failed: ${xhr.status}`));
+        }
+      }
+    };
+    xhr.onerror = () => reject(new Error('Upload failed'));
+    xhr.send(formData);
   });
-  return { url: blob.url };
 }
 
 /** Use our API proxy so limits and usage are enforced server-side. */
 const CONVERT_API = typeof window !== 'undefined' ? '' : (process.env.NEXT_PUBLIC_APP_URL ?? '');
 
 /**
- * Ask backend to convert a file at a public URL (used after uploadToBlob for large files).
+ * Ask backend to convert a file at a public URL (used after uploadToServer for large files).
  */
 export async function convertFromUrl(
   fileUrl: string,
@@ -112,9 +140,9 @@ export async function convertFile(
 
   const targetOutputFormat = outputFormat || getDefaultOutputFormat(inputFormat);
 
-  // For files over Vercel's body limit, upload to Blob first then convert-from-url (no upload progress from Blob client)
+  // For files over body limit, upload to our server first then convert-from-url
   if (file.size > BLOB_THRESHOLD_BYTES) {
-    const { url } = await uploadToBlob(file);
+    const { url } = await uploadToServer(file, onUploadProgress);
     return convertFromUrl(url, file.name, targetOutputFormat);
   }
 
@@ -252,16 +280,18 @@ export async function getPlan(): Promise<PlanResponse> {
 }
 
 /**
- * Bulk convert: upload files to Blob, then call convert-bulk API; returns zip Blob.
+ * Bulk convert: upload files to our server, then call convert-bulk API; returns zip Blob.
  */
 export async function convertBulk(
   files: File[],
-  outputFormat: OutputFormat
+  outputFormat: OutputFormat,
+  onFileProgress?: (fileIndex: number, loaded: number, total: number) => void
 ): Promise<Blob> {
   const base = typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000');
   const urls: { url: string; filename: string }[] = [];
-  for (const file of files) {
-    const { url } = await uploadToBlob(file);
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const { url } = await uploadToServer(file, (loaded, total) => onFileProgress?.(i, loaded, total));
     urls.push({ url, filename: file.name });
   }
   const res = await fetch(`${base}/api/convert-bulk`, {

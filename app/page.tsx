@@ -9,7 +9,7 @@ import DownloadButton from './components/DownloadButton';
 import AdUnit from './components/AdUnit';
 import Pricing from './components/Pricing';
 import { ConversionState, InputFormat, OutputFormat } from './types/converter';
-import { convertFile, uploadToBlob, convertFromUrl, detectInputFormat, getDefaultOutputFormat, getConversionCount, incrementConversionCount, getPlan, type PlanResponse } from './lib/api';
+import { convertFile, uploadToServer, convertFromUrl, detectInputFormat, getDefaultOutputFormat, getConversionCount, incrementConversionCount, getPlan, type PlanResponse } from './lib/api';
 
 type TabType = 'image' | 'ebook';
 
@@ -92,10 +92,12 @@ export default function Home() {
     });
 
     try {
-      const useBlobFlow = file.size > 4 * 1024 * 1024;
-      if (useBlobFlow) {
+      const useLargeFileFlow = file.size > 4 * 1024 * 1024;
+      if (useLargeFileFlow) {
         setConversionState(prev => ({ ...prev, status: 'uploading', uploadProgress: { loaded: 0, total: totalBytes } }));
-        const { url } = await uploadToBlob(file);
+        const { url } = await uploadToServer(file, (loaded, total) => {
+          setConversionState(prev => ({ ...prev, uploadProgress: total ? { loaded, total } : null }));
+        });
         setConversionState(prev => ({ ...prev, status: 'processing', uploadProgress: null }));
         const convertedBlob = await convertFromUrl(url, file.name, outputFormat);
         setConversionState({
