@@ -45,7 +45,7 @@ export const PLAN_ENTITLEMENTS: Record<Plan, Entitlements> = {
     bulkEnabled: true,
     maxFilesPerJob: 50,
     maxFileSizeBytes: TWO_HUNDRED_MB,
-    conversionsPerMonth: 3000,
+    // No conversionsPerMonth = unlimited
     priority: 'highest',
   },
 };

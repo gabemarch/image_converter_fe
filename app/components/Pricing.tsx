@@ -146,7 +146,7 @@ export default function Pricing({ planResponse, onRefresh }: PricingProps) {
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">No ads + priority</p>
           <ul className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-400">
-            <li>3,000 conversions/month</li>
+            <li>Unlimited conversions</li>
             <li>Max 200 MB/file</li>
             <li>Bulk: up to 50 files/job</li>
           </ul>
