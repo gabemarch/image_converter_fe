@@ -225,7 +225,7 @@ export default function Home() {
           </div>
         </div>
       </header>
-      <div className="container mx-auto px-4 py-8 sm:py-16">
+      <main id="main-content" className="container mx-auto px-4 py-8 sm:py-16">
         <div className="max-w-2xl mx-auto">
           <div className="text-center mb-8 sm:mb-12">
             <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 dark:text-white mb-4">
@@ -474,7 +474,7 @@ export default function Home() {
             <p>Free file conversion • No file storage • Privacy guaranteed</p>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
